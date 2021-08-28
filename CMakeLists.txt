@@ -7,7 +7,15 @@ add_definitions(-std=c++11)
 set(CXX_FLAGS "-Wall")
 set(CMAKE_CXX_FLAGS, "${CXX_FLAGS}")
 
-set(sources src/main.cpp)
+
+set(PREDICTOR_SRCS prediction/include/pred_helpers.h prediction/include/classifier.h prediction/classifier.cpp)
+add_library(prediction ${PREDICTOR_SRCS})
+target_include_directories(prediction PUBLIC prediction/include)
+
+
+include_directories(include)
+set(sources src/main.cpp include/helpers.h include/json.hpp)
+# set(sources src/main.cpp include/helpers.h include/json.hpp prediction/include/pred_helpers.h prediction/include/classifier.h prediction/classifier.cpp)
 
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin") 
@@ -23,4 +31,4 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
 add_executable(path_planning ${sources})
 
-target_link_libraries(path_planning z ssl uv uWS)
+target_link_libraries(path_planning z ssl uv uWS prediction)
