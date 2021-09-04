@@ -14,7 +14,9 @@ target_include_directories(prediction PUBLIC prediction/include)
 
 
 include_directories(include)
-set(sources src/main.cpp include/helpers.h include/json.hpp)
+include_directories(vehicle/include)
+include_directories(object_tracker/include)
+set(sources src/main.cpp include/helpers.h include/json.hpp vehicle/vehicle.cpp object_tracker/tracker.cpp)
 # set(sources src/main.cpp include/helpers.h include/json.hpp prediction/include/pred_helpers.h prediction/include/classifier.h prediction/classifier.cpp)
 
 

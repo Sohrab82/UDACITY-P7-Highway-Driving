@@ -8,6 +8,8 @@
 #include "json.hpp"
 #include "pred_helpers.h"
 #include "classifier.h"
+#include "vehicle.h"
+#include "tracker.h"
 
 using std::cout;
 using std::endl;
@@ -17,6 +19,17 @@ using std::vector;
 
 // for convenience
 using nlohmann::json;
+
+class X
+{
+public:
+    double x;
+    X(){};
+    X(double xx)
+    {
+        x = xx;
+    }
+};
 
 int main()
 {
@@ -58,6 +71,15 @@ int main()
     GNB gnb = GNB(new_X_train[0].size());
     // gnb.train(X_train, Y_train);
     gnb.train(new_X_train, Y_train);
+
+    // map<int, X> aa;
+    // aa[1] = X(1.0);
+    // aa[3] = X(3.0);
+    // aa[1].x = 2.0;
+    // X *t = &(aa[1]);
+    // t->x = 1.0;
+    // cout << aa[1].x << endl;
+    // return 0;
 
     // int score = 0;
     // for (size_t i = 0; i < X_test.size(); ++i)
@@ -127,6 +149,7 @@ int main()
     vector<double> map_waypoints_s;
     vector<double> map_waypoints_dx;
     vector<double> map_waypoints_dy;
+    ObjectTracker tracker;
 
     // Waypoint map to read from
     string map_file_ = "../data/highway_map.csv";
@@ -157,8 +180,8 @@ int main()
     }
 
     h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s,
-                 &map_waypoints_dx, &map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
-                                                       uWS::OpCode opCode)
+                 &map_waypoints_dx, &map_waypoints_dy, &tracker](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+                                                                 uWS::OpCode opCode)
                 {
                     // "42" at the start of the message means there's a websocket message event.
                     // The 4 signifies a websocket message
@@ -196,7 +219,11 @@ int main()
                                 // Sensor Fusion Data, a list of all other cars on the same side
                                 //   of the road.
                                 // The data format for each car is: [ id, x, y, vx, vy, s, d]. The id is a unique identifier for that car. The x, y values are in global map coordinates, and the vx, vy values are the velocity components, also in reference to the global map. Finally s and d are the Frenet coordinates for that car. The vx, vy values can be useful for predicting where the cars will be in the future. For instance, if you were to assume that the tracked car kept moving along the road, then its future predicted Frenet s value will be its current s value plus its (transformed) total velocity (m/s) multiplied by the time elapsed into the future (s).
-                                auto sensor_fusion = j[1]["sensor_fusion"];
+                                vector<vector<double>> sensor_fusion = j[1]["sensor_fusion"];
+                                for (auto it = sensor_fusion.begin(); it != sensor_fusion.end(); it++)
+                                {
+                                    tracker.update_object((*it));
+                                }
 
                                 json msgJson;
 
