@@ -26,6 +26,7 @@ public:
     vector<double> vy;
     vector<double> s;
     vector<double> d;
+    vector<double> t;
     float acc; // accelaration
 };
 

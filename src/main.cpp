@@ -10,6 +10,8 @@
 #include "classifier.h"
 #include "vehicle.h"
 #include "tracker.h"
+#include <chrono>
+#include "spline.h"
 
 using std::cout;
 using std::endl;
@@ -33,6 +35,7 @@ public:
 
 int main()
 {
+
     // training the classifier module used for prediction
     vector<vector<double>> X_train = Load_State("../prediction/data/train_states.txt");
     vector<vector<double>> X_test = Load_State("../prediction/data/test_states.txt");
@@ -183,6 +186,7 @@ int main()
                  &map_waypoints_dx, &map_waypoints_dy, &tracker](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                                                                  uWS::OpCode opCode)
                 {
+                    const int REUSABLE_PATH_LEN = 10; // use only 10 points from the previous path and ignore the rest
                     // "42" at the start of the message means there's a websocket message event.
                     // The 4 signifies a websocket message
                     // The 2 signifies a websocket event
@@ -219,27 +223,148 @@ int main()
                                 // Sensor Fusion Data, a list of all other cars on the same side
                                 //   of the road.
                                 // The data format for each car is: [ id, x, y, vx, vy, s, d]. The id is a unique identifier for that car. The x, y values are in global map coordinates, and the vx, vy values are the velocity components, also in reference to the global map. Finally s and d are the Frenet coordinates for that car. The vx, vy values can be useful for predicting where the cars will be in the future. For instance, if you were to assume that the tracked car kept moving along the road, then its future predicted Frenet s value will be its current s value plus its (transformed) total velocity (m/s) multiplied by the time elapsed into the future (s).
+                                unsigned int now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
                                 vector<vector<double>> sensor_fusion = j[1]["sensor_fusion"];
-                                for (auto it = sensor_fusion.begin(); it != sensor_fusion.end(); it++)
-                                {
-                                    tracker.update_object((*it));
-                                }
+                                // for (auto it = sensor_fusion.begin(); it != sensor_fusion.end(); it++)
+                                // {
+                                //     tracker.update_object(now, (*it));
+                                // }
+                                // tracker.analyze_scene(car_s, car_d);
 
                                 json msgJson;
+
+                                int prev_size = previous_path_x.size();
+
+                                double ref_x = car_x;
+                                double ref_y = car_y;
+                                double ref_yaw = deg2rad(car_yaw);
+                                double ref_vel;
+                                vector<double> ptsx;
+                                vector<double> ptsy;
+                                // find two points in the past
+                                if (prev_size < 2)
+                                {
+                                    // Use two points thats makes path tangent to the car
+                                    double prev_car_x = car_x - cos(car_yaw);
+                                    double prev_car_y = car_y - sin(car_yaw);
+                                    ptsx.push_back(prev_car_x);
+                                    ptsx.push_back(car_x);
+
+                                    ptsy.push_back(prev_car_y);
+                                    ptsy.push_back(car_y);
+
+                                    ref_vel = car_speed;
+                                }
+                                else
+                                {
+                                    prev_size = std::min(REUSABLE_PATH_LEN, prev_size);
+
+                                    // Use the the reference point to previous point
+                                    ref_x = previous_path_x[prev_size - 1];
+                                    ref_y = previous_path_y[prev_size - 1];
+                                    double ref_x_prev = previous_path_x[prev_size - 2];
+                                    double ref_y_prev = previous_path_y[prev_size - 2];
+                                    ref_yaw = atan2(ref_y - ref_y_prev, ref_x - ref_x_prev);
+                                    ptsx.push_back(ref_x_prev);
+                                    ptsx.push_back(ref_x);
+
+                                    ptsy.push_back(ref_y_prev);
+                                    ptsy.push_back(ref_y);
+
+                                    ref_vel = distance(ref_x_prev, ref_y_prev, ref_x, ref_y) / 0.02;
+                                }
+                                cout << car_x << " " << car_y << endl;
+                                // find another 3 points in the future
+                                for (int i = 1; i < 4; i++)
+                                {
+                                    vector<double> next_wp = getXY(car_s + 30 * i, 6.0, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+                                    ptsx.push_back(next_wp[0]);
+                                    ptsy.push_back(next_wp[1]);
+                                }
+                                // shift to car coordinates
+                                for (int i = 0; i < ptsx.size(); i++)
+                                {
+                                    double shift_x = ptsx[i] - ref_x;
+                                    double shift_y = ptsy[i] - ref_y;
+
+                                    ptsx[i] = (shift_x * cos(-ref_yaw) - shift_y * sin(-ref_yaw));
+                                    ptsy[i] = (shift_x * sin(-ref_yaw) + shift_y * cos(-ref_yaw));
+                                }
+                                // build the spline based on the 5 points
+                                tk::spline spl;
+                                spl.set_points(ptsx, ptsy);
 
                                 vector<double> next_x_vals;
                                 vector<double> next_y_vals;
 
-                                /**
-           * TODO: define a path made up of (x,y) points that the car will visit
-           *   sequentially every .02 seconds
-           */
-                                double dist_inc = 0.5;
-                                for (int i = 0; i < 50; ++i)
+                                // // Considering REUSABLE_PATH_LEN to create a smooth transition from the
+                                // // old path to the new one
+                                for (int i = 0; i < prev_size; i++)
                                 {
-                                    next_x_vals.push_back(car_x + (dist_inc * i) * cos(deg2rad(car_yaw)));
-                                    next_y_vals.push_back(car_y + (dist_inc * i) * sin(deg2rad(car_yaw)));
+                                    next_x_vals.push_back(previous_path_x[i]);
+                                    next_y_vals.push_back(previous_path_y[i]);
                                 }
+
+                                // car is driving at car_speed at the moment
+                                // It's target speed is target_speed
+                                // for example, at start, car_speed=0 && target_speed=49.5/2.24
+                                // considering it's accelarion along s being acc
+                                // estimating the spline as a line for 30 meters
+                                double target_x = 30.0;
+                                double target_y = spl(target_x);
+                                double target_dist = sqrt(target_x * target_x + target_y * target_y);
+                                double target_angle = atan2(target_y, target_x);
+                                double target_speed = 49.5;
+
+                                double diag_s = 0;
+                                double diag_v = ref_vel;
+                                double diag_a = 5.0;
+
+                                double x_point = 0;
+                                double y_point = spl(x_point);
+
+                                for (int i = 1; i < 50 - prev_size; i++)
+                                {
+
+                                    diag_v += diag_a * 0.02;
+                                    // using 45 instead of 49.5 to account for the spline curvature
+                                    if (diag_v > target_speed / 2.24)
+                                    {
+                                        diag_v = target_speed / 2.24;
+                                        diag_a = 0;
+                                    }
+                                    diag_s += diag_v * 0.02 + 0.5 * diag_a * 0.02 * 0.02;
+                                    cout << i << " " << diag_s << " " << diag_v << " " << diag_a << endl;
+                                    //cout << diag_v << endl;
+
+                                    x_point = diag_s * cos(target_angle);
+                                    y_point = spl(x_point);
+
+                                    // cout << i << " " << x_point << " " << y_point << endl;
+
+                                    double x_ref = x_point;
+                                    double y_ref = y_point;
+
+                                    //Rotate back to normal after rotating it earlier
+                                    x_point = x_ref * cos(ref_yaw) - y_ref * sin(ref_yaw);
+                                    y_point = x_ref * sin(ref_yaw) + y_ref * cos(ref_yaw);
+
+                                    x_point += ref_x;
+                                    y_point += ref_y;
+                                    // cout << i << " " << x_point << " " << y_point << endl;
+                                    next_x_vals.push_back(x_point);
+                                    next_y_vals.push_back(y_point);
+                                }
+                                // return 0;
+                                // // define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
+                                // double dist_inc = 0.5;
+                                // for (int i = 0; i < 50; ++i)
+                                // {
+                                //     next_x_vals.push_back(car_x + (dist_inc * i) * cos(deg2rad(car_yaw)));
+                                //     next_y_vals.push_back(car_y + (dist_inc * i) * sin(deg2rad(car_yaw)));
+                                // }
+
                                 msgJson["next_x"] = next_x_vals;
                                 msgJson["next_y"] = next_y_vals;
 
