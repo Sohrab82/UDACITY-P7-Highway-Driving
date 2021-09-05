@@ -12,6 +12,7 @@
 #include "tracker.h"
 #include <chrono>
 #include "spline.h"
+#include "vehicle.h"
 
 using std::cout;
 using std::endl;
@@ -187,6 +188,8 @@ int main()
                                                                  uWS::OpCode opCode)
                 {
                     const int REUSABLE_PATH_LEN = 10; // use only 10 points from the previous path and ignore the rest
+                    constexpr double MAX_SPEED = 49.5 / 2.24;
+
                     // "42" at the start of the message means there's a websocket message event.
                     // The 4 signifies a websocket message
                     // The 2 signifies a websocket event
@@ -226,14 +229,26 @@ int main()
                                 unsigned int now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
                                 vector<vector<double>> sensor_fusion = j[1]["sensor_fusion"];
-                                // for (auto it = sensor_fusion.begin(); it != sensor_fusion.end(); it++)
-                                // {
-                                //     tracker.update_object(now, (*it));
-                                // }
-                                // tracker.analyze_scene(car_s, car_d);
+                                for (auto it = sensor_fusion.begin(); it != sensor_fusion.end(); it++)
+                                {
+                                    tracker.update_object(now, (*it));
+                                }
+                                tracker.analyze_scene(car_s, car_d);
+
+                                int ego_lane = (int)(car_d / 4);
+                                int target_lane = ego_lane;
+                                Vehicle *front_veh = tracker.front_object();
+                                if (front_veh != NULL)
+                                {
+                                    // if slower than 95% of max speed of 50mph
+                                    if (front_veh->vel() < MAX_SPEED * 0.95)
+                                        if (tracker.can_change_left(car_s, car_d, car_speed))
+                                            target_lane = ego_lane - 1;
+                                        else if (tracker.can_change_right(car_s, car_d, car_speed))
+                                            target_lane = ego_lane + 1;
+                                }
 
                                 json msgJson;
-
                                 int prev_size = previous_path_x.size();
 
                                 double ref_x = car_x;
@@ -274,11 +289,27 @@ int main()
 
                                     ref_vel = distance(ref_x_prev, ref_y_prev, ref_x, ref_y) / 0.02;
                                 }
-                                cout << car_x << " " << car_y << endl;
+                                // cout << car_x << " " << car_y << endl;
                                 // find another 3 points in the future
+                                // To have a smoother lane change:
+                                //   in the first point, the car is at 70% of lane change
+                                //   in the second point, the car is at 90% of lane change
+                                //   in the third point, the car is at 100% of lane change
+                                vector<double> lane_change_coeff = {0.7, 0.9, 1.0};
+                                double mult;
+                                if (target_lane == ego_lane)
+                                    mult = 0.0;
+                                else if (target_lane > ego_lane)
+                                    // lane change right
+                                    mult = 1.0;
+                                else
+                                    // lane change left
+                                    mult = -1.0;
+
+                                double ego_center_lane = ego_lane * 4.0 + 2.0;
                                 for (int i = 1; i < 4; i++)
                                 {
-                                    vector<double> next_wp = getXY(car_s + 30 * i, 6.0, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+                                    vector<double> next_wp = getXY(car_s + 30 * i, ego_center_lane + mult * 4.0 * lane_change_coeff[i - 1], map_waypoints_s, map_waypoints_x, map_waypoints_y);
                                     ptsx.push_back(next_wp[0]);
                                     ptsy.push_back(next_wp[1]);
                                 }
@@ -315,11 +346,24 @@ int main()
                                 double target_y = spl(target_x);
                                 double target_dist = sqrt(target_x * target_x + target_y * target_y);
                                 double target_angle = atan2(target_y, target_x);
+
                                 double target_speed = 49.5;
+                                if (tracker.front_id != -1)
+                                {
+                                    target_speed = tracker.objects[tracker.front_id].vel();
+                                }
 
                                 double diag_s = 0;
                                 double diag_v = ref_vel;
-                                double diag_a = 5.0;
+                                double diag_a;
+
+                                if (fabs(target_speed - ref_vel) <= 0.5)
+                                    // alomst same velocty
+                                    diag_a = 0;
+                                else if (target_speed > ref_vel)
+                                    diag_a = 5.0;
+                                else
+                                    diag_a = -5.0;
 
                                 double x_point = 0;
                                 double y_point = spl(x_point);
@@ -328,14 +372,14 @@ int main()
                                 {
 
                                     diag_v += diag_a * 0.02;
-                                    // using 45 instead of 49.5 to account for the spline curvature
-                                    if (diag_v > target_speed / 2.24)
+
+                                    if (diag_v > MAX_SPEED)
                                     {
-                                        diag_v = target_speed / 2.24;
+                                        diag_v = MAX_SPEED;
                                         diag_a = 0;
                                     }
                                     diag_s += diag_v * 0.02 + 0.5 * diag_a * 0.02 * 0.02;
-                                    cout << i << " " << diag_s << " " << diag_v << " " << diag_a << endl;
+                                    // cout << i << " " << diag_s << " " << diag_v << " " << diag_a << endl;
                                     //cout << diag_v << endl;
 
                                     x_point = diag_s * cos(target_angle);
@@ -356,14 +400,6 @@ int main()
                                     next_x_vals.push_back(x_point);
                                     next_y_vals.push_back(y_point);
                                 }
-                                // return 0;
-                                // // define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
-                                // double dist_inc = 0.5;
-                                // for (int i = 0; i < 50; ++i)
-                                // {
-                                //     next_x_vals.push_back(car_x + (dist_inc * i) * cos(deg2rad(car_yaw)));
-                                //     next_y_vals.push_back(car_y + (dist_inc * i) * sin(deg2rad(car_yaw)));
-                                // }
 
                                 msgJson["next_x"] = next_x_vals;
                                 msgJson["next_y"] = next_y_vals;

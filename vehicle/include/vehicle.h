@@ -4,7 +4,7 @@
 #include <map>
 #include <string>
 #include <vector>
-
+#include <math.h>
 using std::map;
 using std::string;
 using std::vector;
@@ -28,6 +28,8 @@ public:
     vector<double> d;
     vector<double> t;
     float acc; // accelaration
+
+    double vel();
 };
 
 #endif // VEHICLE_H

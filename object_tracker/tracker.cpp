@@ -43,7 +43,7 @@ void ObjectTracker::update_object(unsigned int now, vector<double> sf_object)
         v->s.erase(v->s.begin());
         v->d.erase(v->d.begin());
     }
-    cout << id << " " << objects[id].x.size() << endl;
+    // cout << id << " " << objects[id].x.size() << endl;
 }
 
 vector<int> ObjectTracker::occupied_lanes(double d)
@@ -66,6 +66,8 @@ vector<int> ObjectTracker::occupied_lanes(double d)
 
 void ObjectTracker::analyze_scene(double ego_s, double ego_d)
 {
+    // don't assign false to these two variable in your code
+    // if they become true, they should stay true
     lbs_occupied = false; // left blind spot (from s-10 to s+10)
     rbs_occupied = false; // right blind spot (from s-10 to s+10)
     front_id = -1;
@@ -76,6 +78,14 @@ void ObjectTracker::analyze_scene(double ego_s, double ego_d)
     rear_right_id = -1;
 
     int ego_lane = (int)(ego_d / 4);
+
+    if (ego_lane == 0)
+        // no place on the left
+        lbs_occupied = true;
+    if (ego_lane == 2)
+        // no place on the right
+        rbs_occupied = true;
+
     map<int, Vehicle>::iterator it;
     for (it = objects.begin(); it != objects.end(); it++)
     {
@@ -83,6 +93,10 @@ void ObjectTracker::analyze_scene(double ego_s, double ego_d)
             // object is not tracked anymore
             continue;
         double target_s = it->second.s.back();
+        // out of range objects
+        if ((target_s > MAX_DIST_FRONT + ego_s) || (target_s < ego_s - MAX_DIST_REAR))
+            continue;
+
         double target_d = it->second.d.back();
         vector<int> lanes = occupied_lanes(target_d);
         if (target_s > ego_s + BS_FRONT_MARGIN)
@@ -139,7 +153,7 @@ void ObjectTracker::analyze_scene(double ego_s, double ego_d)
                 }
             }
         }
-        else if (target_s < ego_s + BS_REAR_MARGIN)
+        else if (target_s < ego_s - BS_REAR_MARGIN)
         {
             // analyze rear left
             if (ego_lane != 0)
@@ -198,18 +212,120 @@ void ObjectTracker::analyze_scene(double ego_s, double ego_d)
             // detect objects in belind spots
             if (!lbs_occupied)
             {
-                if (ego_lane == 0)
-                    lbs_occupied = true; // it is not occupied by a vehicle but still not available
-                else
+                if (ego_lane != 0)
                     lbs_occupied = (std::find(lanes.begin(), lanes.end(), ego_lane - 1) != lanes.end());
             }
             if (!rbs_occupied)
             {
-                if (ego_lane == 2)
-                    rbs_occupied = true; // it is not occupied by a vehicle but still not available
-                else
+                if (ego_lane != 2)
                     rbs_occupied = (std::find(lanes.begin(), lanes.end(), ego_lane + 1) != lanes.end());
             }
         }
+    }
+    cout << lbs_occupied << " " << rbs_occupied << endl;
+}
+
+Vehicle *ObjectTracker::front_object()
+{
+    if (front_id == -1)
+        return NULL;
+    else
+        return &objects[front_id];
+};
+
+Vehicle *ObjectTracker::front_left_object()
+{
+    if (front_left_id == -1)
+        return NULL;
+    else
+        return &objects[front_left_id];
+};
+
+Vehicle *ObjectTracker::front_right_object()
+{
+    if (front_right_id == -1)
+        return NULL;
+    else
+        return &objects[front_right_id];
+};
+
+Vehicle *ObjectTracker::rear_object()
+{
+    if (rear_id == -1)
+        return NULL;
+    else
+        return &objects[rear_id];
+};
+
+Vehicle *ObjectTracker::rear_left_object()
+{
+    if (rear_left_id == -1)
+        return NULL;
+    else
+        return &objects[rear_left_id];
+};
+
+Vehicle *ObjectTracker::rear_right_object()
+{
+    if (rear_right_id == -1)
+        return NULL;
+    else
+        return &objects[rear_right_id];
+};
+
+bool ObjectTracker::can_change_left(double ego_s, double ego_d, double ego_vel)
+{
+    int ego_lane = (int)(ego_d / 4);
+    if (ego_lane == 0)
+        return false;
+    if (lbs_occupied)
+        return false;
+    Vehicle *rlo = rear_left_object();
+    if (rlo != NULL)
+        if (rlo->vel() >= 0.9 * ego_vel)
+            // change lane if the rear left object is driving at most 90% of your speed
+            return false;
+
+    // not to worry about rear left objects
+    Vehicle *flo = front_left_object();
+    if (flo == NULL)
+        // no object in front (or rear) left to worry about
+        return true;
+    else
+    {
+        if (flo->vel() < ego_vel)
+            // car in the left lane with smaller velocity
+            return false;
+        else
+            return true;
+    }
+}
+
+bool ObjectTracker::can_change_right(double ego_s, double ego_d, double ego_vel)
+{
+    int ego_lane = (int)(ego_d / 4);
+    if (ego_lane == 2)
+        return false;
+    if (rbs_occupied)
+        return false;
+
+    Vehicle *rro = rear_right_object();
+    if (rro != NULL)
+        if (rro->vel() >= 0.9 * ego_vel)
+            // change lane if the rear right object is driving at most 90% of your speed
+            return false;
+
+    // not to worry about rear left objects
+    Vehicle *fro = front_right_object();
+    if (fro == NULL)
+        // no object in front (or rear) left to worry about
+        return true;
+    else
+    {
+        if (fro->vel() < ego_vel)
+            // car in the left lane with smaller velocity
+            return false;
+        else
+            return true;
     }
 }
