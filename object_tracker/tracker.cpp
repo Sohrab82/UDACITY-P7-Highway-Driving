@@ -282,8 +282,8 @@ bool ObjectTracker::can_change_left(double ego_s, double ego_d, double ego_vel)
         return false;
     Vehicle *rlo = rear_left_object();
     if (rlo != NULL)
-        if (rlo->vel() >= 0.9 * ego_vel)
-            // change lane if the rear left object is driving at most 90% of your speed
+        if (rlo->vel() >= 0.95 * ego_vel)
+            // change lane if the rear left object is driving at most 120% of your speed
             return false;
 
     // not to worry about rear left objects
@@ -311,8 +311,8 @@ bool ObjectTracker::can_change_right(double ego_s, double ego_d, double ego_vel)
 
     Vehicle *rro = rear_right_object();
     if (rro != NULL)
-        if (rro->vel() >= 0.9 * ego_vel)
-            // change lane if the rear right object is driving at most 90% of your speed
+        if (rro->vel() >= 0.95 * ego_vel)
+            // change lane if the rear right object is driving at most 120% of your speed
             return false;
 
     // not to worry about rear left objects

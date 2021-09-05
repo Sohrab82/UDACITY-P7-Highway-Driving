@@ -43,10 +43,10 @@ private:
 
     vector<int> occupied_lanes(double d);
 
-    const int BS_FRONT_MARGIN = 10; // margin for blind spot in the back
-    const int BS_REAR_MARGIN = 10;  // margin for blind spot in the front
+    const int BS_FRONT_MARGIN = 4; // margin for blind spot in the back
+    const int BS_REAR_MARGIN = 12; // margin for blind spot in the front
     const double MAX_DIST_FRONT = 80;
-    const double MAX_DIST_REAR = 40;
+    const double MAX_DIST_REAR = 24;
 };
 
 #endif
