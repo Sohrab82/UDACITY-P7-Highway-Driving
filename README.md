@@ -20,6 +20,33 @@ These files implement a tracker class. The tracker has an `update` function that
 After updating the tracker, the main loop calls `tracker.analyze_scene()`. This function detects any vehicles around the ego vehicle. The area around the ego vehicle has been divided into 8 zones: front, rear, front right, front left, rear left, rear right, and blind spots on the right and left side.
 The blind spots extend from the ego vehicle `s-BS_FRONT_MARGIN` to `s+BS_REAR_MARGIN` on each side. The two constants BS_FRONT_MARGIN and BS_REAR_MARGIN are set to 4 and 12 respectively.
 
+The tracker has functions to returns each detected vehicle in the 8 zones. For example, to retrive the front object,  
+    Vehicle *front_object();
+can be used. The function returns NULL if no object is detected in the front. Equivalently, `front_id` class member can be checked to see if any front object was detected. In case there is an object, this variable will have the `id` of the object reported by sensor fusion, otherwise it will be -1.
+
+analyze_scene() function loops over all sensor fusion (SF) objects:
+    map<int, Vehicle>::iterator it;
+    for (it = objects.begin(); it != objects.end(); it++)
+
+If the object is in the front zone, it's `s` should fit in ego_s+BS_FRONT_MARGIN < s < ego_s+MAX_DIST_FRONT, where BS_FRONT_MARGIN=4 and MAX_DIST_FRONT=80.
+
+For each objects, `occupied_lanes()` is called. This function returns the lanes that are occupied fully or partially by the object.  
+vector<int> ObjectTracker::occupied_lanes(double d)
+   {
+       // returns the lane numbers occupied by the vehicle
+       // might returns two numbers in case the car is changing lane for example
+       vector<int> lanes;
+       int lane = (int)(d / 4);
+       lanes.push_back(lane);
+       double d_normalized = d - lane * 4; //  d in range (0.0, 4.0)
+       if (d_normalized < 0.75)
+           // left of the object is partially in the left lane
+           lanes.push_back(lane - 1);
+       if (d_normalized > 4 - 0.75)
+           // right of the object is partially in the right lane
+           lanes.push_back(lane + 1);
+       return lanes;
+   }
 
 #### 
 
