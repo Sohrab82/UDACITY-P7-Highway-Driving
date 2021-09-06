@@ -57,7 +57,8 @@ Two more functions in this class are `can_change_right()` and `can_change_left()
 - the blind spot is occupied,
 - if a vehicle in the rear left zone and has a velocity of more that 95% the ego vehicle velocty,
 - if there is a front left vehicle with a smaller velocity that the ego vehicle.
-
+    
+    
     bool ObjectTracker::can_change_left(double ego_s, double ego_d, double ego_vel)
     {
         int ego_lane = (int)(ego_d / 4);
