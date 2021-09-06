@@ -9,6 +9,18 @@ The goal is to safely navigate around a virtual highway with other traffic that 
 #### Vehicle.h, Vehicle.cpp
 These files define a class Vehicle that is used to keep track of sensor fustion reported objects. The class keeps values of x, y, vx, vy, s, d, and time for one seond for each object. At the moment, time series of these variables are not used in the project and only the last time step is used.
 
+#### Tracker.h, Tracker.cpp
+These files implement a tracker class. The tracker has an `update` function that updates the data received from sensor fustion about a vehicle. This function is called for every sensor fusion object from `main.cpp` main loop. The `Analyze_scene()` function
+
+    for (auto it = sensor_fusion.begin(); it != sensor_fusion.end(); it++)
+    {
+        tracker.update_object(now, (*it));
+    }
+
+After updating the tracker, the main loop calls `tracker.analyze_scene()`. This function detects any vehicles around the ego vehicle. The area around the ego vehicle has been divided into 8 zones: front, rear, front right, front left, rear left, rear right, and blind spots on the right and left side.
+The blind spots extend from the ego vehicle `s-BS_FRONT_MARGIN` to `s+BS_REAR_MARGIN` on each side. The two constants BS_FRONT_MARGIN and BS_REAR_MARGIN are set to 4 and 12 respectively.
+
+
 #### 
 
 - src/main.cpp
