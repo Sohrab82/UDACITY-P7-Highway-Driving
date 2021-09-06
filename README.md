@@ -17,8 +17,11 @@ These files implement a tracker class. The tracker has an `update` function that
         tracker.update_object(now, (*it));
     }
 
-After updating the tracker, the main loop calls `tracker.analyze_scene()`. This function detects any vehicles around the ego vehicle. The area around the ego vehicle has been divided into 8 zones: front, rear, front right, front left, rear left, rear right, and blind spots on the right and left side.
-The blind spots extend from the ego vehicle `s-BS_FRONT_MARGIN` to `s+BS_REAR_MARGIN` on each side. The two constants BS_FRONT_MARGIN and BS_REAR_MARGIN are set to 4 and 12 respectively.
+After updating the tracker, the main loop calls `tracker.analyze_scene()`. This function detects any vehicles around the ego vehicle. The area around the ego vehicle has been divided into 8 zones: 
+- front: same lane in the front up until MAX_DIST_FRONT=80m
+- rear: same lane in the back up until MAX_DIST_REAR=24m
+- front right, front left, rear left, rear right: in the neighboring lanes with the same detection range as above
+- blind spots on the right and left side: on the sides of the car, extending from `s-BS_FRONT_MARGIN` to `s+BS_REAR_MARGIN`. The two constants BS_FRONT_MARGIN and BS_REAR_MARGIN are set to 4 and 12 respectively.
 
 The tracker has functions to returns each detected vehicle in the 8 zones. For example, to retrive the front object,  
     Vehicle *front_object();
@@ -29,11 +32,9 @@ analyze_scene() function loops over all sensor fusion (SF) objects:
     map<int, Vehicle>::iterator it;
     for (it = objects.begin(); it != objects.end(); it++)
 
-If the object is in the front zone, it's `s` should fit in ego_s+BS_FRONT_MARGIN < s < ego_s+MAX_DIST_FRONT, where BS_FRONT_MARGIN=4 and MAX_DIST_FRONT=80.
+For each object, `occupied_lanes()` is called. This function returns the lanes that are occupied fully or partially by the object. In another word, a vehicle can be considered in more than one lane.
 
-For each objects, `occupied_lanes()` is called. This function returns the lanes that are occupied fully or partially by the object.  
-vector<int> ObjectTracker::occupied_lanes(double d)
-   
+    vector<int> ObjectTracker::occupied_lanes(double d) 
     {
         // returns the lane numbers occupied by the vehicle
         // might returns two numbers in case the car is changing lane for example
@@ -49,6 +50,42 @@ vector<int> ObjectTracker::occupied_lanes(double d)
             lanes.push_back(lane + 1);
         return lanes;
     }
+
+Two more functions in this class are `can_change_right()` and `can_change_left()` functions. 
+`can_change_left()` function returns false if
+- the ego car is on the left line
+- the blind spot is occupied,
+- if a vehicle in the rear left zone and has a velocity of more that 95% the ego vehicle velocty,
+- if there is a front left vehicle with a smaller velocity that the ego vehicle.
+
+    bool ObjectTracker::can_change_left(double ego_s, double ego_d, double ego_vel)
+    {
+        int ego_lane = (int)(ego_d / 4);
+        if (ego_lane == 0)
+            return false;
+        if (lbs_occupied)
+            return false;
+        Vehicle *rlo = rear_left_object();
+        if (rlo != NULL)
+            if (rlo->vel() >= 0.95 * ego_vel)
+                // change lane if the rear left object is driving at most 120% of your speed
+                return false;
+    
+        // not to worry about rear left objects
+        Vehicle *flo = front_left_object();
+        if (flo == NULL)
+            // no object in front (or rear) left to worry about
+            return true;
+        else
+        {
+            if (flo->vel() < ego_vel)
+                // car in the left lane with smaller velocity
+                return false;
+            else
+                return true;
+        }
+    }
+
 
 #### 
 
